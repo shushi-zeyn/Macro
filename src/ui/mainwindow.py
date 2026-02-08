@@ -8,6 +8,7 @@ from pathlib import Path
 import json
 from pynput import keyboard
 from src.ui.styles import THEMES
+from src.ui.languages import TRANSLATIONS
 from src.core.engine import RecorderWorker, PlayerWorker
 
 class KeySignal(QObject):
@@ -54,18 +55,24 @@ class Sidebar(QFrame):
         l.addWidget(subtitle)
         l.addSpacing(15)
         
-        self.btn1 = self.mk_btn("🏠 Dashboard", 0)
-        self.btn2 = self.mk_btn("⚡ Macros", 1)
-        self.btn3 = self.mk_btn("⚙️ Config", 2)
+        self.btn1 = self.mk_btn("nav_dash", 0)
+        self.btn2 = self.mk_btn("nav_macro", 1)
+        self.btn3 = self.mk_btn("nav_config", 2)
         
         l.addStretch()
         
         self.status = QLabel("● STANDBY")
         self.status.setStyleSheet("color: #95a5a6; font-weight: bold; font-size: 11px;")
         l.addWidget(self.status)
+        
+        # Signature
+        self.signature = QLabel("Made by Shushi")
+        self.signature.setStyleSheet("color: #555; font-size: 10px; font-style: italic; margin-top: 5px;")
+        self.signature.setAlignment(Qt.AlignCenter)
+        l.addWidget(self.signature)
 
-    def mk_btn(self, text, idx):
-        b = QPushButton(text)
+    def mk_btn(self, key, idx):
+        b = QPushButton(key) # On stocke la clé de traduction temporairement
         b.setProperty("class", "NavBtn")
         b.setCheckable(True)
         b.setAutoExclusive(True)
@@ -89,8 +96,8 @@ class MainWindow(QMainWindow):
         self.recorder = None
         self.player = None
         self.is_hidden = False
+        self.current_lang = "EN" # Langue par défaut
         
-        # Variables pour le timer
         self.start_play_time = None
         self.target_duration = 0
         
@@ -103,6 +110,7 @@ class MainWindow(QMainWindow):
         
         self.setup_ui()
         self.apply_theme("Dark Matte")
+        self.retranslate_ui() # Appliquer les textes initiaux
         
         self.timer = QTimer()
         self.timer.timeout.connect(self.update_time)
@@ -134,7 +142,7 @@ class MainWindow(QMainWindow):
         l.setSpacing(15)
         
         header_layout = QHBoxLayout()
-        self.greeting = QLabel(self.get_greeting())
+        self.greeting = QLabel()
         self.greeting.setObjectName("Greeting")
         header_layout.addWidget(self.greeting)
         header_layout.addStretch()
@@ -147,7 +155,7 @@ class MainWindow(QMainWindow):
         
         h = QHBoxLayout()
         h.setSpacing(10)
-        self.card_time = InfoCard("HEURE", datetime.now().strftime("%H:%M:%S"), "🕒")
+        self.card_time = InfoCard("TIME", datetime.now().strftime("%H:%M:%S"), "🕒")
         self.card_evts = InfoCard("EVENTS", "0", "🎬")
         self.card_mode = InfoCard("MODE", "LITE", "⚙️")
         h.addWidget(self.card_time)
@@ -160,29 +168,27 @@ class MainWindow(QMainWindow):
         d_layout = QHBoxLayout(duration_frame)
         d_layout.setContentsMargins(10, 5, 10, 5)
         
-        lbl_d = QLabel("⏱️ Mode :")
-        lbl_d.setStyleSheet("color: #ccc; font-weight: bold;")
-        d_layout.addWidget(lbl_d)
+        self.lbl_mode_play = QLabel()
+        self.lbl_mode_play.setStyleSheet("color: #ccc; font-weight: bold;")
+        d_layout.addWidget(self.lbl_mode_play)
         
-        self.chk_infinite = QCheckBox("Infini")
+        self.chk_infinite = QCheckBox()
         self.chk_infinite.setStyleSheet("color: #fff;")
         self.chk_infinite.toggled.connect(self.toggle_duration_spin)
         d_layout.addWidget(self.chk_infinite)
         
         d_layout.addSpacing(20)
         
-        self.lbl_spin = QLabel("Durée :")
+        self.lbl_spin = QLabel()
         self.lbl_spin.setStyleSheet("color: #ccc;")
         d_layout.addWidget(self.lbl_spin)
         
-        # SpinBox Minutes
         self.spin_min = QSpinBox()
         self.spin_min.setRange(0, 999)
         self.spin_min.setSuffix(" min")
         self.spin_min.setStyleSheet("background-color: #333; color: white; padding: 5px;")
         d_layout.addWidget(self.spin_min)
         
-        # SpinBox Secondes
         self.spin_sec = QSpinBox()
         self.spin_sec.setRange(0, 59)
         self.spin_sec.setSuffix(" s")
@@ -192,17 +198,17 @@ class MainWindow(QMainWindow):
         d_layout.addStretch()
         l.addWidget(duration_frame)
         
-        self.hk_info = QLabel(f"⌨️ {self.hk_play.upper()}: Play | {self.hk_rec.upper()}: Rec | {self.hk_ghost.upper()}: Ghost")
+        self.hk_info = QLabel()
         self.hk_info.setStyleSheet("color: #888; font-size: 11px; padding: 5px;")
         l.addWidget(self.hk_info)
         
         h2 = QHBoxLayout()
         h2.setSpacing(10)
-        self.btn_rec = QPushButton(f"🔴 REC ({self.hk_rec.upper()})")
+        self.btn_rec = QPushButton()
         self.btn_rec.setProperty("class", "ActionBtn")
         self.btn_rec.clicked.connect(self.toggle_rec)
         
-        self.btn_play = QPushButton(f"▶ PLAY ({self.hk_play.upper()})")
+        self.btn_play = QPushButton()
         self.btn_play.setProperty("class", "ActionBtn")
         self.btn_play.clicked.connect(self.toggle_play)
         
@@ -210,23 +216,16 @@ class MainWindow(QMainWindow):
         h2.addWidget(self.btn_play)
         l.addLayout(h2)
         
-        console_lbl = QLabel("📊 LOGS")
-        console_lbl.setStyleSheet("font-weight: bold; font-size: 12px; margin-top: 5px;")
-        l.addWidget(console_lbl)
+        self.console_lbl = QLabel()
+        self.console_lbl.setStyleSheet("font-weight: bold; font-size: 12px; margin-top: 5px;")
+        l.addWidget(self.console_lbl)
         
         self.console = QTextEdit()
         self.console.setReadOnly(True)
         self.console.setMaximumHeight(150)
-        self.console.append("[System] Interface chargée.")
         l.addWidget(self.console)
         
         self.pages.addWidget(p)
-
-    def toggle_duration_spin(self):
-        is_infinite = self.chk_infinite.isChecked()
-        self.spin_min.setEnabled(not is_infinite)
-        self.spin_sec.setEnabled(not is_infinite)
-        self.lbl_spin.setStyleSheet("color: #555;" if is_infinite else "color: #ccc;")
 
     def setup_macro_page(self):
         p = QWidget()
@@ -234,35 +233,35 @@ class MainWindow(QMainWindow):
         l.setContentsMargins(25, 25, 25, 25)
         l.setSpacing(15)
         
-        title = QLabel("⚡ GESTION MACROS")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #bb86fc;")
-        l.addWidget(title)
+        self.title_macro = QLabel()
+        self.title_macro.setStyleSheet("font-size: 22px; font-weight: bold; color: #bb86fc;")
+        l.addWidget(self.title_macro)
         
         h = QHBoxLayout()
         h.setSpacing(10)
-        b_save = QPushButton("💾 Sauvegarder une macro")
-        b_save.setProperty("class", "ActionBtn")
-        b_save.clicked.connect(self.save_macro)
-        b_use = QPushButton("▶ Utiliser la macro sélectionnée")
-        b_use.setProperty("class", "ActionBtn")
-        b_use.clicked.connect(self.use_selected_macro)
-        h.addWidget(b_save)
-        h.addWidget(b_use)
+        self.btn_save = QPushButton()
+        self.btn_save.setProperty("class", "ActionBtn")
+        self.btn_save.clicked.connect(self.save_macro)
+        self.btn_load = QPushButton()
+        self.btn_load.setProperty("class", "ActionBtn")
+        self.btn_load.clicked.connect(self.use_selected_macro)
+        h.addWidget(self.btn_save)
+        h.addWidget(self.btn_load)
         l.addLayout(h)
         
-        list_lbl = QLabel("📁 Macros disponibles (Double-clic pour charger):")
-        list_lbl.setStyleSheet("font-size: 12px; margin-top: 5px; color: #e0e0e0;")
-        l.addWidget(list_lbl)
+        self.list_label = QLabel()
+        self.list_label.setStyleSheet("font-size: 12px; margin-top: 5px; color: #e0e0e0;")
+        l.addWidget(self.list_label)
         
         self.list_w = QListWidget()
         self.list_w.itemDoubleClicked.connect(self.use_selected_macro)
         self.refresh_macro_list()
         l.addWidget(self.list_w)
         
-        b_refresh = QPushButton("🔄 Rafraîchir la liste")
-        b_refresh.setProperty("class", "NavBtn")
-        b_refresh.clicked.connect(self.refresh_macro_list)
-        l.addWidget(b_refresh)
+        self.btn_refresh = QPushButton()
+        self.btn_refresh.setProperty("class", "NavBtn")
+        self.btn_refresh.clicked.connect(self.refresh_macro_list)
+        l.addWidget(self.btn_refresh)
         
         self.pages.addWidget(p)
 
@@ -272,22 +271,35 @@ class MainWindow(QMainWindow):
         l.setContentsMargins(25, 25, 25, 25)
         l.setSpacing(20)
         
-        title = QLabel("⚙️ CONFIGURATION")
-        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #bb86fc;")
-        l.addWidget(title)
+        self.title_config = QLabel()
+        self.title_config.setStyleSheet("font-size: 22px; font-weight: bold; color: #bb86fc;")
+        l.addWidget(self.title_config)
         
-        theme_group = QGroupBox("🎨 Apparence")
-        theme_layout = QVBoxLayout(theme_group)
-        lbl_theme = QLabel("Choisir un thème :")
+        # Langue
+        self.grp_lang = QGroupBox()
+        lang_layout = QVBoxLayout(self.grp_lang)
+        self.lbl_lang = QLabel()
+        self.cb_lang = QComboBox()
+        self.cb_lang.addItems(["English", "Français"])
+        self.cb_lang.currentTextChanged.connect(self.change_language)
+        lang_layout.addWidget(self.lbl_lang)
+        lang_layout.addWidget(self.cb_lang)
+        l.addWidget(self.grp_lang)
+        
+        # Thème
+        self.grp_theme = QGroupBox()
+        theme_layout = QVBoxLayout(self.grp_theme)
+        self.lbl_theme = QLabel()
         self.cb_theme = QComboBox()
         self.cb_theme.addItems(THEMES.keys())
         self.cb_theme.currentTextChanged.connect(self.apply_theme)
-        theme_layout.addWidget(lbl_theme)
+        theme_layout.addWidget(self.lbl_theme)
         theme_layout.addWidget(self.cb_theme)
-        l.addWidget(theme_group)
+        l.addWidget(self.grp_theme)
         
-        opacity_group = QGroupBox("👻 Transparence")
-        opacity_layout = QVBoxLayout(opacity_group)
+        # Opacité
+        self.grp_opacity = QGroupBox()
+        opacity_layout = QVBoxLayout(self.grp_opacity)
         h_op = QHBoxLayout()
         self.slider_opacity = QSlider(Qt.Horizontal)
         self.slider_opacity.setRange(50, 100)
@@ -298,36 +310,285 @@ class MainWindow(QMainWindow):
         h_op.addWidget(self.slider_opacity)
         h_op.addWidget(self.lbl_opacity_val)
         opacity_layout.addLayout(h_op)
-        l.addWidget(opacity_group)
+        l.addWidget(self.grp_opacity)
         
-        mode_group = QGroupBox("📹 Mode d'enregistrement")
-        mode_layout = QVBoxLayout(mode_group)
-        self.rb_lite = QRadioButton("Lite (Clics + Clavier uniquement)")
+        # Mode
+        self.grp_mode = QGroupBox()
+        mode_layout = QVBoxLayout(self.grp_mode)
+        self.rb_lite = QRadioButton()
         self.rb_lite.setChecked(True)
-        self.rb_pro = QRadioButton("Pro (Mouvements de souris complets)")
+        self.rb_pro = QRadioButton()
         self.rb_lite.toggled.connect(lambda: self.set_recording_mode("LITE") if self.rb_lite.isChecked() else None)
         self.rb_pro.toggled.connect(lambda: self.set_recording_mode("PRO") if self.rb_pro.isChecked() else None)
         mode_layout.addWidget(self.rb_lite)
         mode_layout.addWidget(self.rb_pro)
-        l.addWidget(mode_group)
+        l.addWidget(self.grp_mode)
         
-        hk_group = QGroupBox("⌨️ Raccourcis Clavier")
-        hk_layout = QVBoxLayout(hk_group)
+        # Hotkeys
+        self.grp_hk = QGroupBox()
+        hk_layout = QVBoxLayout(self.grp_hk)
         self.btn_hk_play = QPushButton(f"▶ Play: {self.hk_play.upper()}")
         self.btn_hk_rec = QPushButton(f"🔴 Rec: {self.hk_rec.upper()}")
         self.btn_hk_ghost = QPushButton(f"👻 Ghost: {self.hk_ghost.upper()}")
         hk_layout.addWidget(self.btn_hk_play)
         hk_layout.addWidget(self.btn_hk_rec)
         hk_layout.addWidget(self.btn_hk_ghost)
-        l.addWidget(hk_group)
+        l.addWidget(self.grp_hk)
         
         l.addStretch()
         self.pages.addWidget(p)
 
+    # --- Internationalisation ---
+
+    def change_language(self, lang_name):
+        code = "FR" if lang_name == "Français" else "EN"
+        if code != self.current_lang:
+            self.current_lang = code
+            self.retranslate_ui()
+            self.console.append(self.tr("log_lang"))
+
+    def tr(self, key):
+        return TRANSLATIONS[self.current_lang].get(key, key)
+
+    def retranslate_ui(self):
+        # Sidebar
+        self.sidebar.btn1.setText(self.tr("nav_dash"))
+        self.sidebar.btn2.setText(self.tr("nav_macro"))
+        self.sidebar.btn3.setText(self.tr("nav_config"))
+        self.sidebar.status.setText(self.tr("status_standby"))
+        self.sidebar.signature.setText(self.tr("made_by"))
+        
+        # Dashboard
+        self.update_greeting()
+        self.card_time.title_lbl.setText(f"🕒 {self.tr('card_time')}")
+        self.card_evts.title_lbl.setText(f"🎬 {self.tr('card_events')}")
+        self.card_mode.title_lbl.setText(f"⚙️ {self.tr('card_mode')}")
+        self.hk_info.setText(self.tr("hk_info"))
+        self.btn_rec.setText(self.tr("btn_rec"))
+        self.btn_play.setText(self.tr("btn_play"))
+        self.console_lbl.setText(self.tr("logs_title"))
+        self.lbl_mode_play.setText(self.tr("mode_play"))
+        self.chk_infinite.setText(self.tr("infinite"))
+        self.lbl_spin.setText(self.tr("duration"))
+        
+        # Macros
+        self.title_macro.setText(self.tr("title_macro"))
+        self.btn_save.setText(self.tr("btn_save"))
+        self.btn_load.setText(self.tr("btn_load"))
+        self.list_label.setText(self.tr("list_label"))
+        self.btn_refresh.setText(self.tr("btn_refresh"))
+        
+        # Config
+        self.title_config.setText(self.tr("title_config"))
+        self.grp_lang.setTitle(self.tr("grp_lang"))
+        self.lbl_lang.setText(self.tr("lbl_lang"))
+        self.grp_theme.setTitle(self.tr("grp_theme"))
+        self.lbl_theme.setText(self.tr("lbl_theme"))
+        self.grp_opacity.setTitle(self.tr("grp_opacity"))
+        self.grp_mode.setTitle(self.tr("grp_mode"))
+        self.rb_lite.setText(self.tr("rb_lite"))
+        self.rb_pro.setText(self.tr("rb_pro"))
+        self.grp_hk.setTitle(self.tr("grp_hk"))
+
+    # --- Logique ---
+
+    def toggle_duration_spin(self):
+        is_infinite = self.chk_infinite.isChecked()
+        self.spin_min.setEnabled(not is_infinite)
+        self.spin_sec.setEnabled(not is_infinite)
+        self.lbl_spin.setStyleSheet("color: #555;" if is_infinite else "color: #ccc;")
+
+    def toggle_rec(self):
+        if self.player and self.player.isRunning():
+            self.console.append(self.tr("err_conflict_rec"))
+            return
+
+        if self.recorder and self.recorder.isRunning():
+            self.recorder.stop_recording()
+        else:
+            self.recorder = RecorderWorker(self.recording_mode)
+            self.recorder.log_signal.connect(self.console.append)
+            self.recorder.finished.connect(self.fin_rec)
+            self.recorder.start()
+            
+            self.btn_rec.setText(self.tr("btn_stop_rec"))
+            self.btn_rec.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold;")
+            self.sidebar.status.setText(self.tr("status_rec"))
+            self.sidebar.status.setStyleSheet("color: #e74c3c; font-weight: bold;")
+            self.btn_play.setEnabled(False)
+            self.btn_play.setStyleSheet("background-color: #333; color: #555;")
+            self.console.append(self.tr("msg_rec_start"))
+
+    def fin_rec(self, events):
+        self.macro_data = events
+        self.card_evts.val.setText(str(len(events)))
+        
+        self.btn_rec.setText(self.tr("btn_rec"))
+        self.btn_rec.setProperty("class", "ActionBtn")
+        self.style().unpolish(self.btn_rec); self.style().polish(self.btn_rec)
+        
+        self.sidebar.status.setText(self.tr("status_standby"))
+        self.sidebar.status.setStyleSheet("color: #95a5a6; font-weight: bold;")
+        self.console.append(f"{self.tr('msg_rec_end')} {len(events)}")
+        
+        self.btn_play.setEnabled(True)
+        self.btn_play.setProperty("class", "ActionBtn")
+        self.style().unpolish(self.btn_play); self.style().polish(self.btn_play)
+
+    def toggle_play(self):
+        if self.recorder and self.recorder.isRunning():
+            self.console.append(self.tr("err_conflict_play"))
+            return
+
+        if self.player and self.player.isRunning():
+            self.player.stop_playback()
+        else:
+            if not self.macro_data:
+                QMessageBox.information(self, "Info", self.tr("err_no_data"))
+                return
+
+            is_infinite = self.chk_infinite.isChecked()
+            duration_min = self.spin_min.value()
+            duration_sec = self.spin_sec.value()
+            total_seconds = (duration_min * 60) + duration_sec
+            
+            self.player = PlayerWorker()
+            self.player.log_signal.connect(self.console.append)
+            self.player.status_signal.connect(self.update_status)
+            self.player.finished.connect(self.fin_play)
+            
+            self.player.start_playback(self.macro_data, infinite=is_infinite, duration=total_seconds)
+            
+            self.btn_play.setText(self.tr("btn_stop_play"))
+            self.btn_play.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
+            self.btn_rec.setEnabled(False)
+            self.btn_rec.setStyleSheet("background-color: #333; color: #555;")
+            self.console.append(self.tr("msg_play_start"))
+            
+            self.start_play_time = datetime.now()
+            self.target_duration = total_seconds
+            self.lbl_duration.setVisible(True)
+            if is_infinite:
+                self.lbl_duration.setText("∞")
+            else:
+                self.lbl_duration.setText("00:00")
+
+    def fin_play(self):
+        self.btn_play.setText(self.tr("btn_play"))
+        self.btn_play.setProperty("class", "ActionBtn")
+        self.style().unpolish(self.btn_play); self.style().polish(self.btn_play)
+        
+        self.btn_rec.setEnabled(True)
+        self.btn_rec.setProperty("class", "ActionBtn")
+        self.style().unpolish(self.btn_rec); self.style().polish(self.btn_rec)
+        
+        self.lbl_duration.setVisible(False)
+        self.start_play_time = None
+        self.console.append(self.tr("msg_play_end"))
+
+    def update_status(self, msg, color):
+        # On ne traduit pas les messages techniques du worker pour l'instant, ou on pourrait
+        self.sidebar.status.setText(f"● {msg}")
+        self.sidebar.status.setStyleSheet(f"color: {color}; font-weight: bold;")
+
+    def set_recording_mode(self, mode):
+        self.recording_mode = mode
+        self.card_mode.val.setText(mode)
+        self.console.append(f"{self.tr('log_mode')} {mode}")
+
+    def switch_page(self, idx):
+        self.pages.setCurrentIndex(idx)
+        if idx == 1:
+            self.refresh_macro_list()
+
+    def apply_theme(self, name):
+        if name in THEMES:
+            self.setStyleSheet(THEMES[name])
+            self.console.append(f"{self.tr('log_theme')} {name}")
+
+    def update_opacity(self, value):
+        self.setWindowOpacity(value / 100.0)
+        self.lbl_opacity_val.setText(f"{value}%")
+
+    def get_greeting(self):
+        h = datetime.now().hour
+        if 5 <= h < 13: return self.tr("greeting_morning")
+        elif 13 <= h < 18: return self.tr("greeting_afternoon")
+        else: return self.tr("greeting_evening")
+
+    def update_greeting(self):
+        self.greeting.setText(self.get_greeting())
+
+    def update_time(self):
+        self.card_time.val.setText(datetime.now().strftime("%H:%M:%S"))
+        if self.start_play_time and self.player and self.player.isRunning():
+            elapsed = (datetime.now() - self.start_play_time).total_seconds()
+            if self.chk_infinite.isChecked():
+                m, s = divmod(int(elapsed), 60)
+                self.lbl_duration.setText(f"∞ {m:02d}:{s:02d}")
+            elif self.target_duration > 0:
+                remaining = max(0, self.target_duration - elapsed)
+                m, s = divmod(int(remaining), 60)
+                self.lbl_duration.setText(f"⏳ {m:02d}:{s:02d}")
+            else:
+                self.lbl_duration.setText(self.tr("cycle"))
+
+    def refresh_macro_list(self):
+        self.list_w.clear()
+        for f in self.macros_path.glob("*.json"):
+            self.list_w.addItem(f.name)
+
+    def save_macro(self):
+        if not self.macro_data:
+            QMessageBox.warning(self, "Info", self.tr("warn_empty"))
+            return
+
+        fname, _ = QFileDialog.getSaveFileName(
+            self, self.tr("btn_save"), str(self.macros_path), "JSON (*.json)"
+        )
+        if fname:
+            try:
+                data = {"mode": self.recording_mode, "events": self.macro_data}
+                with open(fname, 'w') as f:
+                    json.dump(data, f, indent=4)
+                self.console.append(f"{self.tr('log_saved')} {Path(fname).name}")
+                self.refresh_macro_list()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"{self.tr('err_save')} {e}")
+
+    def use_selected_macro(self):
+        current_item = self.list_w.currentItem()
+        if not current_item:
+            QMessageBox.warning(self, "Info", self.tr("warn_select"))
+            return
+        
+        macro_name = current_item.text()
+        file_path = self.macros_path / macro_name
+        
+        try:
+            with open(file_path, 'r') as f:
+                data = json.load(f)
+                if isinstance(data, list):
+                    self.macro_data = data
+                else:
+                    self.macro_data = data.get("events", [])
+                    mode = data.get("mode", "LITE")
+                    self.set_recording_mode(mode)
+                    if mode == "PRO": self.rb_pro.setChecked(True)
+                    else: self.rb_lite.setChecked(True)
+            
+            self.console.append(f"{self.tr('log_loaded')} {macro_name}")
+            self.card_evts.val.setText(str(len(self.macro_data)))
+            self.switch_page(0)
+            self.sidebar.btn1.setChecked(True)
+            
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"{self.tr('err_load')} {e}")
+    
     def start_global_listener(self):
         self.listener = keyboard.Listener(on_press=self._on_global_press)
         self.listener.start()
-        self.console.append("⌨️ Écoute clavier activée")
+        self.console.append(self.tr("log_init"))
 
     def _on_global_press(self, key):
         try:
@@ -349,204 +610,12 @@ class MainWindow(QMainWindow):
             self.activateWindow()
             self.raise_()
             self.is_hidden = False
-            self.console.append("👁️ Mode Ghost désactivé")
+            self.console.append(self.tr("msg_ghost_off"))
         else:
             self.hide()
             self.is_hidden = True
-            print("👻 Mode Ghost activé (Appuyez sur F3 pour réafficher)")
+            print(self.tr("msg_ghost_on"))
 
-    def toggle_rec(self):
-        if self.player and self.player.isRunning():
-            self.console.append("⚠️ Impossible d'enregistrer pendant la lecture !")
-            return
-
-        if self.recorder and self.recorder.isRunning():
-            self.recorder.stop_recording()
-        else:
-            self.recorder = RecorderWorker(self.recording_mode)
-            self.recorder.log_signal.connect(self.console.append)
-            self.recorder.finished.connect(self.fin_rec)
-            self.recorder.start()
-            
-            self.btn_rec.setText("⏹ STOP REC")
-            self.btn_rec.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold;")
-            self.sidebar.status.setText("● RECORDING")
-            self.sidebar.status.setStyleSheet("color: #e74c3c; font-weight: bold;")
-            self.btn_play.setEnabled(False)
-            self.btn_play.setStyleSheet("background-color: #333; color: #555;")
-
-    def fin_rec(self, events):
-        self.macro_data = events
-        self.card_evts.val.setText(str(len(events)))
-        
-        self.btn_rec.setText(f"🔴 REC ({self.hk_rec.upper()})")
-        self.btn_rec.setProperty("class", "ActionBtn")
-        self.style().unpolish(self.btn_rec); self.style().polish(self.btn_rec)
-        
-        self.sidebar.status.setText("● STANDBY")
-        self.sidebar.status.setStyleSheet("color: #95a5a6; font-weight: bold;")
-        self.console.append(f"✅ Enregistrement terminé : {len(events)} actions capturées.")
-        
-        self.btn_play.setEnabled(True)
-        self.btn_play.setProperty("class", "ActionBtn")
-        self.style().unpolish(self.btn_play); self.style().polish(self.btn_play)
-
-    def toggle_play(self):
-        if self.recorder and self.recorder.isRunning():
-            self.console.append("⚠️ Impossible de lire pendant l'enregistrement !")
-            return
-
-        if self.player and self.player.isRunning():
-            self.player.stop_playback()
-        else:
-            if not self.macro_data:
-                QMessageBox.information(self, "Info", "Aucune macro en mémoire à lire.")
-                return
-
-            # Récupération des paramètres de durée
-            is_infinite = self.chk_infinite.isChecked()
-            duration_min = self.spin_min.value()
-            duration_sec = self.spin_sec.value()
-            total_seconds = (duration_min * 60) + duration_sec
-            
-            self.player = PlayerWorker()
-            self.player.log_signal.connect(self.console.append)
-            self.player.status_signal.connect(self.update_status)
-            self.player.finished.connect(self.fin_play)
-            
-            self.player.start_playback(self.macro_data, infinite=is_infinite, duration=total_seconds)
-            
-            self.btn_play.setText("⏸ STOP PLAY")
-            self.btn_play.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
-            self.btn_rec.setEnabled(False)
-            self.btn_rec.setStyleSheet("background-color: #333; color: #555;")
-            
-            # Initialisation du timer visuel
-            self.start_play_time = datetime.now()
-            self.target_duration = total_seconds
-            self.lbl_duration.setVisible(True)
-            if is_infinite:
-                self.lbl_duration.setText("∞")
-            else:
-                self.lbl_duration.setText("00:00")
-
-    def fin_play(self):
-        self.btn_play.setText(f"▶ PLAY ({self.hk_play.upper()})")
-        self.btn_play.setProperty("class", "ActionBtn")
-        self.style().unpolish(self.btn_play); self.style().polish(self.btn_play)
-        
-        self.btn_rec.setEnabled(True)
-        self.btn_rec.setProperty("class", "ActionBtn")
-        self.style().unpolish(self.btn_rec); self.style().polish(self.btn_rec)
-        
-        self.lbl_duration.setVisible(False)
-        self.start_play_time = None
-
-    def update_status(self, msg, color):
-        self.sidebar.status.setText(f"● {msg}")
-        self.sidebar.status.setStyleSheet(f"color: {color}; font-weight: bold;")
-
-    def set_recording_mode(self, mode):
-        self.recording_mode = mode
-        self.card_mode.val.setText(mode)
-        self.console.append(f"⚙️ Mode d'enregistrement changé : {mode}")
-
-    def switch_page(self, idx):
-        self.pages.setCurrentIndex(idx)
-        if idx == 1:
-            self.refresh_macro_list()
-
-    def apply_theme(self, name):
-        if name in THEMES:
-            self.setStyleSheet(THEMES[name])
-            self.console.append(f"🎨 Thème appliqué : {name}")
-
-    def update_opacity(self, value):
-        self.setWindowOpacity(value / 100.0)
-        self.lbl_opacity_val.setText(f"{value}%")
-
-    def get_greeting(self):
-        h = datetime.now().hour
-        if 5 <= h < 13: return "☀️ Bonjour Shushi"
-        elif 13 <= h < 18: return "🌤️ Bon après-midi"
-        else: return "🌙 Bonsoir Shushi"
-
-    def update_time(self):
-        # Mise à jour de l'heure
-        self.card_time.val.setText(datetime.now().strftime("%H:%M:%S"))
-        
-        # Mise à jour du chrono si lecture en cours
-        if self.start_play_time and self.player and self.player.isRunning():
-            elapsed = (datetime.now() - self.start_play_time).total_seconds()
-            
-            if self.chk_infinite.isChecked():
-                # Mode Infini : On affiche le temps écoulé
-                m, s = divmod(int(elapsed), 60)
-                self.lbl_duration.setText(f"∞ {m:02d}:{s:02d}")
-            elif self.target_duration > 0:
-                # Mode Minuteur : On affiche le temps restant
-                remaining = max(0, self.target_duration - elapsed)
-                m, s = divmod(int(remaining), 60)
-                self.lbl_duration.setText(f"⏳ {m:02d}:{s:02d}")
-            else:
-                # Mode 1 cycle
-                self.lbl_duration.setText("1 Cycle")
-
-    def refresh_macro_list(self):
-        self.list_w.clear()
-        for f in self.macros_path.glob("*.json"):
-            self.list_w.addItem(f.name)
-
-    def save_macro(self):
-        if not self.macro_data:
-            QMessageBox.warning(self, "Attention", "Rien à sauvegarder ! Enregistrez d'abord une macro.")
-            return
-
-        fname, _ = QFileDialog.getSaveFileName(
-            self, "Sauvegarder la macro", str(self.macros_path), "JSON (*.json)"
-        )
-        if fname:
-            try:
-                data = {
-                    "mode": self.recording_mode,
-                    "events": self.macro_data
-                }
-                with open(fname, 'w') as f:
-                    json.dump(data, f, indent=4)
-                self.console.append(f"💾 Macro sauvegardée : {Path(fname).name}")
-                self.refresh_macro_list()
-            except Exception as e:
-                QMessageBox.critical(self, "Erreur", f"Erreur lors de la sauvegarde : {e}")
-
-    def use_selected_macro(self):
-        current_item = self.list_w.currentItem()
-        if not current_item:
-            QMessageBox.warning(self, "Attention", "Veuillez sélectionner une macro dans la liste.")
-            return
-        
-        macro_name = current_item.text()
-        file_path = self.macros_path / macro_name
-        
-        try:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    self.macro_data = data
-                else:
-                    self.macro_data = data.get("events", [])
-                    mode = data.get("mode", "LITE")
-                    self.set_recording_mode(mode)
-                    if mode == "PRO": self.rb_pro.setChecked(True)
-                    else: self.rb_lite.setChecked(True)
-            
-            self.console.append(f"📂 Macro chargée : {macro_name} ({len(self.macro_data)} actions)")
-            self.card_evts.val.setText(str(len(self.macro_data)))
-            self.switch_page(0)
-            self.sidebar.btn1.setChecked(True)
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Impossible de charger la macro : {e}")
-    
     def closeEvent(self, event):
         if hasattr(self, 'listener'):
             self.listener.stop()
