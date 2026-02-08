@@ -1,6 +1,7 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QPushButton, QLabel, QFrame, QStackedWidget, QTextEdit,
-                               QListWidget, QFileDialog, QMessageBox, QComboBox, QSlider, QRadioButton, QGroupBox)
+                               QListWidget, QFileDialog, QMessageBox, QComboBox, QSlider, QRadioButton, QGroupBox,
+                               QCheckBox, QSpinBox)
 from PySide6.QtCore import Qt, QTimer, Signal, QObject
 from datetime import datetime
 from pathlib import Path
@@ -89,6 +90,10 @@ class MainWindow(QMainWindow):
         self.player = None
         self.is_hidden = False
         
+        # Variables pour le timer
+        self.start_play_time = None
+        self.target_duration = 0
+        
         self.hk_play = 'f1'
         self.hk_rec = 'f2'
         self.hk_ghost = 'f3'
@@ -128,9 +133,17 @@ class MainWindow(QMainWindow):
         l.setContentsMargins(25, 25, 25, 25)
         l.setSpacing(15)
         
+        header_layout = QHBoxLayout()
         self.greeting = QLabel(self.get_greeting())
         self.greeting.setObjectName("Greeting")
-        l.addWidget(self.greeting)
+        header_layout.addWidget(self.greeting)
+        header_layout.addStretch()
+        
+        self.lbl_duration = QLabel("00:00")
+        self.lbl_duration.setStyleSheet("color: #bb86fc; font-weight: bold; font-size: 24px; font-family: monospace;")
+        self.lbl_duration.setVisible(False)
+        header_layout.addWidget(self.lbl_duration)
+        l.addLayout(header_layout)
         
         h = QHBoxLayout()
         h.setSpacing(10)
@@ -141,6 +154,43 @@ class MainWindow(QMainWindow):
         h.addWidget(self.card_evts)
         h.addWidget(self.card_mode)
         l.addLayout(h)
+        
+        duration_frame = QFrame()
+        duration_frame.setStyleSheet("background-color: rgba(255,255,255,0.05); border-radius: 8px;")
+        d_layout = QHBoxLayout(duration_frame)
+        d_layout.setContentsMargins(10, 5, 10, 5)
+        
+        lbl_d = QLabel("⏱️ Mode :")
+        lbl_d.setStyleSheet("color: #ccc; font-weight: bold;")
+        d_layout.addWidget(lbl_d)
+        
+        self.chk_infinite = QCheckBox("Infini")
+        self.chk_infinite.setStyleSheet("color: #fff;")
+        self.chk_infinite.toggled.connect(self.toggle_duration_spin)
+        d_layout.addWidget(self.chk_infinite)
+        
+        d_layout.addSpacing(20)
+        
+        self.lbl_spin = QLabel("Durée :")
+        self.lbl_spin.setStyleSheet("color: #ccc;")
+        d_layout.addWidget(self.lbl_spin)
+        
+        # SpinBox Minutes
+        self.spin_min = QSpinBox()
+        self.spin_min.setRange(0, 999)
+        self.spin_min.setSuffix(" min")
+        self.spin_min.setStyleSheet("background-color: #333; color: white; padding: 5px;")
+        d_layout.addWidget(self.spin_min)
+        
+        # SpinBox Secondes
+        self.spin_sec = QSpinBox()
+        self.spin_sec.setRange(0, 59)
+        self.spin_sec.setSuffix(" s")
+        self.spin_sec.setStyleSheet("background-color: #333; color: white; padding: 5px;")
+        d_layout.addWidget(self.spin_sec)
+        
+        d_layout.addStretch()
+        l.addWidget(duration_frame)
         
         self.hk_info = QLabel(f"⌨️ {self.hk_play.upper()}: Play | {self.hk_rec.upper()}: Rec | {self.hk_ghost.upper()}: Ghost")
         self.hk_info.setStyleSheet("color: #888; font-size: 11px; padding: 5px;")
@@ -171,6 +221,12 @@ class MainWindow(QMainWindow):
         l.addWidget(self.console)
         
         self.pages.addWidget(p)
+
+    def toggle_duration_spin(self):
+        is_infinite = self.chk_infinite.isChecked()
+        self.spin_min.setEnabled(not is_infinite)
+        self.spin_sec.setEnabled(not is_infinite)
+        self.lbl_spin.setStyleSheet("color: #555;" if is_infinite else "color: #ccc;")
 
     def setup_macro_page(self):
         p = QWidget()
@@ -271,7 +327,7 @@ class MainWindow(QMainWindow):
     def start_global_listener(self):
         self.listener = keyboard.Listener(on_press=self._on_global_press)
         self.listener.start()
-        self.console.append("⌨️ Écoute clavier activée (F1/F2/F3)")
+        self.console.append("⌨️ Écoute clavier activée")
 
     def _on_global_press(self, key):
         try:
@@ -300,7 +356,6 @@ class MainWindow(QMainWindow):
             print("👻 Mode Ghost activé (Appuyez sur F3 pour réafficher)")
 
     def toggle_rec(self):
-        # Sécurité : Si PLAY est actif, on ne fait rien (ou on pourrait stopper PLAY)
         if self.player and self.player.isRunning():
             self.console.append("⚠️ Impossible d'enregistrer pendant la lecture !")
             return
@@ -317,8 +372,6 @@ class MainWindow(QMainWindow):
             self.btn_rec.setStyleSheet("background-color: #e74c3c; color: white; font-weight: bold;")
             self.sidebar.status.setText("● RECORDING")
             self.sidebar.status.setStyleSheet("color: #e74c3c; font-weight: bold;")
-            
-            # DÉSACTIVATION DU BOUTON PLAY
             self.btn_play.setEnabled(False)
             self.btn_play.setStyleSheet("background-color: #333; color: #555;")
 
@@ -334,13 +387,11 @@ class MainWindow(QMainWindow):
         self.sidebar.status.setStyleSheet("color: #95a5a6; font-weight: bold;")
         self.console.append(f"✅ Enregistrement terminé : {len(events)} actions capturées.")
         
-        # RÉACTIVATION DU BOUTON PLAY
         self.btn_play.setEnabled(True)
         self.btn_play.setProperty("class", "ActionBtn")
         self.style().unpolish(self.btn_play); self.style().polish(self.btn_play)
 
     def toggle_play(self):
-        # Sécurité : Si REC est actif, on ne fait rien
         if self.recorder and self.recorder.isRunning():
             self.console.append("⚠️ Impossible de lire pendant l'enregistrement !")
             return
@@ -352,28 +403,44 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Info", "Aucune macro en mémoire à lire.")
                 return
 
+            # Récupération des paramètres de durée
+            is_infinite = self.chk_infinite.isChecked()
+            duration_min = self.spin_min.value()
+            duration_sec = self.spin_sec.value()
+            total_seconds = (duration_min * 60) + duration_sec
+            
             self.player = PlayerWorker()
             self.player.log_signal.connect(self.console.append)
             self.player.status_signal.connect(self.update_status)
             self.player.finished.connect(self.fin_play)
-            self.player.start_playback(self.macro_data)
+            
+            self.player.start_playback(self.macro_data, infinite=is_infinite, duration=total_seconds)
             
             self.btn_play.setText("⏸ STOP PLAY")
             self.btn_play.setStyleSheet("background-color: #27ae60; color: white; font-weight: bold;")
-            
-            # DÉSACTIVATION DU BOUTON REC
             self.btn_rec.setEnabled(False)
             self.btn_rec.setStyleSheet("background-color: #333; color: #555;")
+            
+            # Initialisation du timer visuel
+            self.start_play_time = datetime.now()
+            self.target_duration = total_seconds
+            self.lbl_duration.setVisible(True)
+            if is_infinite:
+                self.lbl_duration.setText("∞")
+            else:
+                self.lbl_duration.setText("00:00")
 
     def fin_play(self):
         self.btn_play.setText(f"▶ PLAY ({self.hk_play.upper()})")
         self.btn_play.setProperty("class", "ActionBtn")
         self.style().unpolish(self.btn_play); self.style().polish(self.btn_play)
         
-        # RÉACTIVATION DU BOUTON REC
         self.btn_rec.setEnabled(True)
         self.btn_rec.setProperty("class", "ActionBtn")
         self.style().unpolish(self.btn_rec); self.style().polish(self.btn_rec)
+        
+        self.lbl_duration.setVisible(False)
+        self.start_play_time = None
 
     def update_status(self, msg, color):
         self.sidebar.status.setText(f"● {msg}")
@@ -405,7 +472,25 @@ class MainWindow(QMainWindow):
         else: return "🌙 Bonsoir Shushi"
 
     def update_time(self):
+        # Mise à jour de l'heure
         self.card_time.val.setText(datetime.now().strftime("%H:%M:%S"))
+        
+        # Mise à jour du chrono si lecture en cours
+        if self.start_play_time and self.player and self.player.isRunning():
+            elapsed = (datetime.now() - self.start_play_time).total_seconds()
+            
+            if self.chk_infinite.isChecked():
+                # Mode Infini : On affiche le temps écoulé
+                m, s = divmod(int(elapsed), 60)
+                self.lbl_duration.setText(f"∞ {m:02d}:{s:02d}")
+            elif self.target_duration > 0:
+                # Mode Minuteur : On affiche le temps restant
+                remaining = max(0, self.target_duration - elapsed)
+                m, s = divmod(int(remaining), 60)
+                self.lbl_duration.setText(f"⏳ {m:02d}:{s:02d}")
+            else:
+                # Mode 1 cycle
+                self.lbl_duration.setText("1 Cycle")
 
     def refresh_macro_list(self):
         self.list_w.clear()

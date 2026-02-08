@@ -75,21 +75,33 @@ class PlayerWorker(QThread):
         self.running = False
         self.events = []
         self.loop = False
+        self.duration = 0 # 0 = une seule fois, >0 = temps limite en secondes
+        self.infinite = False
         
     def run(self):
         self.kb = keyboard.Controller()
-        self.mouse = mouse.Controller() # Contrôleur souris pynput (plus rapide)
+        self.mouse = mouse.Controller()
         
         self.status_signal.emit("RUNNING", "#2ecc71")
         self.log_signal.emit("▶ Lecture de la macro...")
         
         self.running = True
+        start_global = time.time()
         
         while self.running:
+            # Vérification du temps limite
+            if self.duration > 0 and (time.time() - start_global > self.duration):
+                self.log_signal.emit("⏱️ Temps écoulé")
+                break
+
             start_t = time.time()
             for event in self.events:
                 if not self.running: break
                 
+                # Vérif temps limite à l'intérieur de la boucle aussi
+                if self.duration > 0 and (time.time() - start_global > self.duration):
+                    break
+
                 target = start_t + event['t']
                 
                 while time.time() < target and self.running:
@@ -98,7 +110,10 @@ class PlayerWorker(QThread):
                 if not self.running: break
                 self._execute(event)
             
-            if not self.loop: break
+            # Si pas infini et pas de durée définie, on sort après une fois
+            if not self.infinite and self.duration <= 0:
+                break
+                
             time.sleep(0.1)
             
         self.status_signal.emit("STANDBY", "#95a5a6")
@@ -108,9 +123,10 @@ class PlayerWorker(QThread):
     def stop_playback(self):
         self.running = False
 
-    def start_playback(self, events, loop=False):
+    def start_playback(self, events, infinite=False, duration=0):
         self.events = events
-        self.loop = loop
+        self.infinite = infinite
+        self.duration = duration
         self.start()
 
     def _execute(self, e):
@@ -122,17 +138,13 @@ class PlayerWorker(QThread):
                 k = self._parse_key(e['key'])
                 if k: self.kb.release(k)
             elif e['type'] == 'click':
-                # Pour le clic, on déplace d'abord la souris (via pynput pour la vitesse)
                 self.mouse.position = (e['x'], e['y'])
-                
-                # Puis on clique (via pyautogui pour la fiabilité du clic)
                 btn = 'left' if e['button'] == 'left' else 'right'
                 if e['pressed']: 
                     pyautogui.mouseDown(button=btn)
                 else: 
                     pyautogui.mouseUp(button=btn)
             elif e['type'] == 'move':
-                # Mouvement ultra-rapide via pynput
                 self.mouse.position = (e['x'], e['y'])
         except: pass
 
