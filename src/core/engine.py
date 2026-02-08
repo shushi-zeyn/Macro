@@ -3,6 +3,10 @@ from pynput import keyboard, mouse
 import pyautogui
 from PySide6.QtCore import QThread, Signal
 
+# Optimisations globales
+pyautogui.PAUSE = 0
+pyautogui.FAILSAFE = False
+
 class RecorderWorker(QThread):
     finished = Signal(list)
     log_signal = Signal(str)
@@ -21,14 +25,12 @@ class RecorderWorker(QThread):
         self.start_time = time.time()
         self.log_signal.emit(f"🔴 Enregistrement démarré (Mode: {self.mode})")
         
-        # Si mode PRO, on enregistre aussi les mouvements
         on_move = self._on_move if self.mode == 'PRO' else None
         
-        # On lance les écouteurs (Listeners) de pynput
         with mouse.Listener(on_click=self._on_click, on_move=on_move) as m_listener:
             with keyboard.Listener(on_press=self._on_key_press, on_release=self._on_key_release) as k_listener:
                 while self.recording:
-                    time.sleep(0.05) # Petite pause pour ne pas surcharger le CPU
+                    time.sleep(0.05)
         
         self.finished.emit(self.events)
 
@@ -65,30 +67,31 @@ class RecorderWorker(QThread):
 
 class PlayerWorker(QThread):
     log_signal = Signal(str)
-    status_signal = Signal(str, str) # Message, Couleur
+    status_signal = Signal(str, str)
     finished = Signal()
     
     def __init__(self):
         super().__init__()
         self.running = False
         self.events = []
-        self.loop = False # Pour l'instant pas de boucle infinie par défaut
+        self.loop = False
         
     def run(self):
         self.kb = keyboard.Controller()
+        self.mouse = mouse.Controller() # Contrôleur souris pynput (plus rapide)
+        
         self.status_signal.emit("RUNNING", "#2ecc71")
         self.log_signal.emit("▶ Lecture de la macro...")
         
         self.running = True
         
-        # Boucle de lecture (si loop=True, sinon une seule fois)
         while self.running:
             start_t = time.time()
             for event in self.events:
                 if not self.running: break
                 
-                # Attente précise du timing
                 target = start_t + event['t']
+                
                 while time.time() < target and self.running:
                     time.sleep(0.001)
                 
@@ -119,14 +122,18 @@ class PlayerWorker(QThread):
                 k = self._parse_key(e['key'])
                 if k: self.kb.release(k)
             elif e['type'] == 'click':
+                # Pour le clic, on déplace d'abord la souris (via pynput pour la vitesse)
+                self.mouse.position = (e['x'], e['y'])
+                
+                # Puis on clique (via pyautogui pour la fiabilité du clic)
                 btn = 'left' if e['button'] == 'left' else 'right'
                 if e['pressed']: 
-                    pyautogui.moveTo(e['x'], e['y'], duration=0)
                     pyautogui.mouseDown(button=btn)
                 else: 
                     pyautogui.mouseUp(button=btn)
             elif e['type'] == 'move':
-                pyautogui.moveTo(e['x'], e['y'], duration=0)
+                # Mouvement ultra-rapide via pynput
+                self.mouse.position = (e['x'], e['y'])
         except: pass
 
     def _parse_key(self, k_str):
