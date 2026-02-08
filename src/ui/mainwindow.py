@@ -219,7 +219,7 @@ class MainWindow(QMainWindow):
         
         h_op = QHBoxLayout()
         self.slider_opacity = QSlider(Qt.Horizontal)
-        self.slider_opacity.setRange(50, 100) # Min 50%, Max 100%
+        self.slider_opacity.setRange(50, 100)
         self.slider_opacity.setValue(100)
         
         self.lbl_opacity_val = QLabel("100%")
@@ -240,11 +240,15 @@ class MainWindow(QMainWindow):
         self.rb_lite.setChecked(True)
         self.rb_pro = QRadioButton("Pro (Mouvements de souris complets)")
         
+        # Connexion des signaux pour les logs
+        self.rb_lite.toggled.connect(lambda: self.log_mode_change("LITE") if self.rb_lite.isChecked() else None)
+        self.rb_pro.toggled.connect(lambda: self.log_mode_change("PRO") if self.rb_pro.isChecked() else None)
+        
         mode_layout.addWidget(self.rb_lite)
         mode_layout.addWidget(self.rb_pro)
         l.addWidget(mode_group)
         
-        # 4. Raccourcis (Visuel seulement pour l'instant)
+        # 4. Raccourcis
         hk_group = QGroupBox("⌨️ Raccourcis Clavier")
         hk_layout = QVBoxLayout(hk_group)
         
@@ -271,9 +275,13 @@ class MainWindow(QMainWindow):
             self.console.append(f"🎨 Thème appliqué : {name}")
 
     def update_opacity(self, value):
-        """Met à jour l'opacité de la fenêtre"""
         self.setWindowOpacity(value / 100.0)
         self.lbl_opacity_val.setText(f"{value}%")
+
+    def log_mode_change(self, mode):
+        """Log le changement de mode et met à jour la carte"""
+        self.console.append(f"⚙️ Mode changé : {mode}")
+        self.card_mode.val.setText(mode)
 
     def get_greeting(self):
         h = datetime.now().hour
