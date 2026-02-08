@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environnement virtuel
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# Fichiers temporaires et logs
+*.log
+*.tmp
+
+# Ancien fichier monolithique (Code Spaghetti)
+Test3.py
+
+# Macros enregistrées
+macros/
