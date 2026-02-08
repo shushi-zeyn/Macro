@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QPushButton, QLabel, QFrame, QStackedWidget, QTextEdit,
-                               QListWidget, QFileDialog, QMessageBox)
+                               QListWidget, QFileDialog, QMessageBox, QComboBox, QSlider, QRadioButton, QGroupBox)
 from PySide6.QtCore import Qt, QTimer
 from datetime import datetime
 from pathlib import Path
@@ -102,7 +102,7 @@ class MainWindow(QMainWindow):
         
         self.setup_dash()
         self.setup_macro_page()
-        self.setup_empty_page("Page Config (À venir)")
+        self.setup_config_page()
 
     def setup_dash(self):
         p = QWidget()
@@ -162,33 +162,27 @@ class MainWindow(QMainWindow):
         title.setStyleSheet("font-size: 22px; font-weight: bold; color: #bb86fc;")
         l.addWidget(title)
         
-        # Boutons d'action
         h = QHBoxLayout()
         h.setSpacing(10)
-        
         b_save = QPushButton("💾 Sauvegarder une macro")
         b_save.setProperty("class", "ActionBtn")
         b_save.clicked.connect(self.save_macro)
-        
         b_use = QPushButton("▶ Utiliser la macro sélectionnée")
         b_use.setProperty("class", "ActionBtn")
         b_use.clicked.connect(self.use_selected_macro)
-        
         h.addWidget(b_save)
         h.addWidget(b_use)
         l.addLayout(h)
         
-        # Liste des fichiers
         list_lbl = QLabel("📁 Macros disponibles (Double-clic pour charger):")
         list_lbl.setStyleSheet("font-size: 12px; margin-top: 5px; color: #e0e0e0;")
         l.addWidget(list_lbl)
         
         self.list_w = QListWidget()
         self.list_w.itemDoubleClicked.connect(self.use_selected_macro)
-        self.refresh_macro_list() # On remplit la liste au démarrage
+        self.refresh_macro_list()
         l.addWidget(self.list_w)
         
-        # Bouton Rafraîchir
         b_refresh = QPushButton("🔄 Rafraîchir la liste")
         b_refresh.setProperty("class", "NavBtn")
         b_refresh.clicked.connect(self.refresh_macro_list)
@@ -196,23 +190,90 @@ class MainWindow(QMainWindow):
         
         self.pages.addWidget(p)
 
-    def setup_empty_page(self, title):
+    def setup_config_page(self):
         p = QWidget()
         l = QVBoxLayout(p)
-        lbl = QLabel(title)
-        lbl.setAlignment(Qt.AlignCenter)
-        l.addWidget(lbl)
+        l.setContentsMargins(25, 25, 25, 25)
+        l.setSpacing(20)
+        
+        title = QLabel("⚙️ CONFIGURATION")
+        title.setStyleSheet("font-size: 22px; font-weight: bold; color: #bb86fc;")
+        l.addWidget(title)
+        
+        # 1. Thèmes
+        theme_group = QGroupBox("🎨 Apparence")
+        theme_layout = QVBoxLayout(theme_group)
+        
+        lbl_theme = QLabel("Choisir un thème :")
+        self.cb_theme = QComboBox()
+        self.cb_theme.addItems(THEMES.keys())
+        self.cb_theme.currentTextChanged.connect(self.apply_theme)
+        
+        theme_layout.addWidget(lbl_theme)
+        theme_layout.addWidget(self.cb_theme)
+        l.addWidget(theme_group)
+        
+        # 2. Opacité
+        opacity_group = QGroupBox("👻 Transparence")
+        opacity_layout = QVBoxLayout(opacity_group)
+        
+        h_op = QHBoxLayout()
+        self.slider_opacity = QSlider(Qt.Horizontal)
+        self.slider_opacity.setRange(50, 100) # Min 50%, Max 100%
+        self.slider_opacity.setValue(100)
+        
+        self.lbl_opacity_val = QLabel("100%")
+        self.lbl_opacity_val.setFixedWidth(40)
+        
+        self.slider_opacity.valueChanged.connect(self.update_opacity)
+        
+        h_op.addWidget(self.slider_opacity)
+        h_op.addWidget(self.lbl_opacity_val)
+        opacity_layout.addLayout(h_op)
+        l.addWidget(opacity_group)
+        
+        # 3. Mode Macro
+        mode_group = QGroupBox("📹 Mode d'enregistrement")
+        mode_layout = QVBoxLayout(mode_group)
+        
+        self.rb_lite = QRadioButton("Lite (Clics + Clavier uniquement)")
+        self.rb_lite.setChecked(True)
+        self.rb_pro = QRadioButton("Pro (Mouvements de souris complets)")
+        
+        mode_layout.addWidget(self.rb_lite)
+        mode_layout.addWidget(self.rb_pro)
+        l.addWidget(mode_group)
+        
+        # 4. Raccourcis (Visuel seulement pour l'instant)
+        hk_group = QGroupBox("⌨️ Raccourcis Clavier")
+        hk_layout = QVBoxLayout(hk_group)
+        
+        self.btn_hk_play = QPushButton("▶ Play: F1")
+        self.btn_hk_rec = QPushButton("🔴 Rec: F2")
+        self.btn_hk_ghost = QPushButton("👻 Ghost: F3")
+        
+        hk_layout.addWidget(self.btn_hk_play)
+        hk_layout.addWidget(self.btn_hk_rec)
+        hk_layout.addWidget(self.btn_hk_ghost)
+        l.addWidget(hk_group)
+        
+        l.addStretch()
         self.pages.addWidget(p)
 
     def switch_page(self, idx):
         self.pages.setCurrentIndex(idx)
-        # Si on va sur la page Macros (index 1), on rafraîchit la liste
         if idx == 1:
             self.refresh_macro_list()
 
     def apply_theme(self, name):
         if name in THEMES:
             self.setStyleSheet(THEMES[name])
+            self.console.append(f"🎨 Thème appliqué : {name}")
+
+    def update_opacity(self, value):
+        """Met à jour l'opacité de la fenêtre"""
+        self.setWindowOpacity(value / 100.0)
+        self.lbl_opacity_val.setText(f"{value}%")
 
     def get_greeting(self):
         h = datetime.now().hour
@@ -226,43 +287,28 @@ class MainWindow(QMainWindow):
     # --- Logique Macros ---
 
     def refresh_macro_list(self):
-        """Scanne le dossier macros/ et remplit la liste"""
         self.list_w.clear()
-        # On cherche tous les fichiers .json
         for f in self.macros_path.glob("*.json"):
             self.list_w.addItem(f.name)
 
     def save_macro(self):
-        """Ouvre une boîte de dialogue pour sauvegarder"""
-        # Note: Pour l'instant on sauvegarde un fichier vide ou de test
-        # car on n'a pas encore connecté le moteur d'enregistrement.
         fname, _ = QFileDialog.getSaveFileName(
-            self, 
-            "Sauvegarder la macro", 
-            str(self.macros_path), 
-            "JSON (*.json)"
+            self, "Sauvegarder la macro", str(self.macros_path), "JSON (*.json)"
         )
-        
         if fname:
             try:
-                # Simulation de données pour tester
                 dummy_data = {"name": Path(fname).stem, "events": []}
-                
                 with open(fname, 'w') as f:
                     json.dump(dummy_data, f, indent=4)
-                
                 self.console.append(f"💾 Macro sauvegardée : {Path(fname).name}")
                 self.refresh_macro_list()
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de la sauvegarde : {e}")
 
     def use_selected_macro(self):
-        """Charge la macro sélectionnée dans la liste"""
         current_item = self.list_w.currentItem()
         if not current_item:
             QMessageBox.warning(self, "Attention", "Veuillez sélectionner une macro dans la liste.")
             return
-            
         macro_name = current_item.text()
         self.console.append(f"📂 Macro chargée : {macro_name}")
-        # Ici on connectera plus tard le PlayerWorker pour jouer la macro
